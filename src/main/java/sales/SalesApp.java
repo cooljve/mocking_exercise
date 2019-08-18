@@ -7,62 +7,79 @@ import java.util.List;
 
 public class SalesApp {
 
-	public void generateSalesActivityReport(String salesId, int maxRow, boolean isNatTrade, boolean isSupervisor) {
-		
-		SalesDao salesDao = new SalesDao();
-		SalesReportDao salesReportDao = new SalesReportDao();
-		List<String> headers = null;
-		
-		List<SalesReportData> filteredReportDataList = new ArrayList<SalesReportData>();
-		
-		if (salesId == null) {
-			return;
-		}
-		
-		Sales sales = salesDao.getSalesBySalesId(salesId);
-		
-		Date today = new Date();
-		if (today.after(sales.getEffectiveTo())
-				|| today.before(sales.getEffectiveFrom())){
-			return;
-		}
-		
-		List<SalesReportData> reportDataList = salesReportDao.getReportData(sales);
-		
-		for (SalesReportData data : reportDataList) {
-			if ("SalesActivity".equalsIgnoreCase(data.getType())) {
-				if (data.isConfidential()) {
-					if (isSupervisor) {
-						filteredReportDataList.add(data);
-					}
-				}else {
-					filteredReportDataList.add(data);
-				}
-			}
-		}
-		
-		List<SalesReportData> tempList = new ArrayList<SalesReportData>();
-		for (int i=0; i < reportDataList.size() || i < maxRow; i++) {
-			tempList.add(reportDataList.get(i));
-		}
-		filteredReportDataList = tempList;
-		
-		if (isNatTrade) {
-			headers = Arrays.asList("Sales ID", "Sales Name", "Activity", "Time");
-		} else {
-			headers = Arrays.asList("Sales ID", "Sales Name", "Activity", "Local Time");
-		}
-		
-		SalesActivityReport report = this.generateReport(headers, reportDataList);
-		
-		EcmService ecmService = new EcmService();
-		ecmService.uploadDocument(report.toXml());
-		
-	}
+  private static final String SALES_ACTIVITY = "SalesActivity";
 
-	private SalesActivityReport generateReport(List<String> headers, List<SalesReportData> reportDataList) {
-		// TODO Auto-generated method stub
-		return null;
-	}
+  SalesDao salesDao;
+  SalesReportDao salesReportDao;
+  EcmService ecmService;
+
+  public SalesApp() {
+    salesDao = new SalesDao();
+    salesReportDao = new SalesReportDao();
+    ecmService = new EcmService();
+  }
+
+  public SalesDao getSalesDao() {
+    return salesDao;
+  }
+
+  public SalesReportDao getSalesReportDao() {
+    return salesReportDao;
+  }
+
+  public EcmService getEcmService() {
+    return ecmService;
+  }
+
+  public void generateSalesActivityReport(String salesId, int maxRow, boolean isNatTrade, boolean isSupervisor) {
+
+    if (salesId == null) return;
+    Sales sales = getSalesDao().getSalesBySalesId(salesId);
+    Date today = new Date();
+    if (isNotEffective(sales, today)) return;
+
+    List<String> headers;
+    List<SalesReportData> filteredReportDataList;
+    List<SalesReportData> reportDataList = getSalesReportDao().getReportData(sales);
+
+    filteredReportDataList = filterSalesActivityData(isSupervisor, reportDataList);
+    filteredReportDataList = filterRedundantData(maxRow, filteredReportDataList);
+    headers = getHeadersByNatTrade(isNatTrade);
+
+    SalesActivityReport report = generateReport(headers, filteredReportDataList);
+    getEcmService().uploadDocument(report.toXml());
+  }
+
+  protected List<SalesReportData> filterSalesActivityData(boolean isSupervisor, List<SalesReportData> reportDataList) {
+    List<SalesReportData> dataList = new ArrayList<>();
+    reportDataList.stream().filter(x->isMatchCondition(isSupervisor,x)).forEach(dataList::add);
+    return dataList;
+  }
+
+  private boolean isMatchCondition(boolean isSupervisor, SalesReportData data) {
+    return SALES_ACTIVITY.equalsIgnoreCase(data.getType()) &&(!data.isConfidential() || isSupervisor);
+  }
+
+  protected List<SalesReportData> filterRedundantData(int maxRow, List<SalesReportData> reportDataList) {
+    int rowSize = reportDataList.size() > maxRow ? maxRow : reportDataList.size();
+    reportDataList = reportDataList.subList(0, rowSize);
+    return reportDataList;
+  }
+
+  protected List<String> getHeadersByNatTrade(boolean isNatTrade) {
+    List<String> headers;
+    headers = isNatTrade ? Arrays.asList("Sales ID", "Sales Name", "Activity", "Time")
+        : Arrays.asList("Sales ID", "Sales Name", "Activity", "Local Time");
+    return headers;
+  }
+
+  protected boolean isNotEffective(Sales sales, Date today) {
+    return today.after(sales.getEffectiveTo()) || today.before(sales.getEffectiveFrom());
+  }
+
+  protected SalesActivityReport generateReport(List<String> headers, List<SalesReportData> reportDataList) {
+    // TODO Auto-generated method stub
+    return null;
+  }
 
 }
